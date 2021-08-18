@@ -477,7 +477,7 @@ class MBConvLayer(MyModule, MetaModule):
 			layer_str += '_G%d' % self.groups
 		if isinstance(self.point_linear.bn, nn.GroupNorm):
 			layer_str += '_GN%d' % self.point_linear.bn.num_groups
-		elif isinstance(self.point_linear.bn, nn.BatchNorm2d):
+		elif isinstance(self.point_linear.bn, MetaBatchNorm2d):
 			layer_str += '_BN'
 
 		return layer_str
