@@ -7,6 +7,9 @@ import torch
 import torch.nn as nn
 from collections import OrderedDict
 
+from torchmeta.modules.module import MetaModule
+from torchmeta.modules import MetaConv2d, MetaSequential, MetaBatchNorm2d
+
 from ofa.utils.layers import MBConvLayer, ConvLayer, IdentityLayer, set_layer_from_config
 from ofa.utils.layers import ResNetBottleneckBlock, LinearLayer
 from ofa.utils import MyModule, val2list, get_net_device, build_activation, make_divisible, SEModule, MyNetwork
@@ -103,7 +106,7 @@ class DynamicLinearLayer(MyModule):
         }
 
 
-class DynamicMBConvLayer(MyModule):
+class DynamicMBConvLayer(MyModule, MetaModule):
 
     def __init__(self, in_channel_list, out_channel_list,
                  kernel_size_list=3, expand_ratio_list=6, stride=1, act_func='relu6', use_se=False):
@@ -125,13 +128,13 @@ class DynamicMBConvLayer(MyModule):
         if max(self.expand_ratio_list) == 1:
             self.inverted_bottleneck = None
         else:
-            self.inverted_bottleneck = nn.Sequential(OrderedDict([
+            self.inverted_bottleneck = MetaSequential(OrderedDict([
                 ('conv', DynamicConv2d(max(self.in_channel_list), max_middle_channel)),
                 ('bn', DynamicBatchNorm2d(max_middle_channel)),
                 ('act', build_activation(self.act_func)),
             ]))
 
-        self.depth_conv = nn.Sequential(OrderedDict([
+        self.depth_conv = MetaSequential(OrderedDict([
             ('conv', DynamicSeparableConv2d(max_middle_channel, self.kernel_size_list, self.stride)),
             ('bn', DynamicBatchNorm2d(max_middle_channel)),
             ('act', build_activation(self.act_func))
@@ -139,7 +142,7 @@ class DynamicMBConvLayer(MyModule):
         if self.use_se:
             self.depth_conv.add_module('se', DynamicSE(max_middle_channel))
 
-        self.point_linear = nn.Sequential(OrderedDict([
+        self.point_linear = MetaSequential(OrderedDict([
             ('conv', DynamicConv2d(max_middle_channel, max(self.out_channel_list))),
             ('bn', DynamicBatchNorm2d(max(self.out_channel_list))),
         ]))

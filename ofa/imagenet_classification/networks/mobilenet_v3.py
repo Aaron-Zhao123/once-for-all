@@ -8,10 +8,12 @@ import torch.nn as nn
 from ofa.utils.layers import set_layer_from_config, MBConvLayer, ConvLayer, IdentityLayer, LinearLayer, ResidualBlock
 from ofa.utils import MyNetwork, make_divisible, MyGlobalAvgPool2d
 
+from torchmeta.modules.module import MetaModule
+
 __all__ = ['MobileNetV3', 'MobileNetV3Large']
 
 
-class MobileNetV3(MyNetwork):
+class MobileNetV3(MyNetwork, MetaModule):
 
 	def __init__(self, first_conv, blocks, final_expand_layer, feature_mix_layer, classifier):
 		super(MobileNetV3, self).__init__()

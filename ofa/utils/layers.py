@@ -9,6 +9,8 @@ from collections import OrderedDict
 from ofa.utils import get_same_padding, min_divisible_value, SEModule, ShuffleLayer
 from ofa.utils import MyNetwork, MyModule
 from ofa.utils import build_activation, make_divisible
+from torchmeta.modules.module import MetaModule
+from torchmeta.modules import MetaConv2d, MetaSequential, MetaBatchNorm2d, MetaBatchNorm1d
 
 __all__ = [
 	'set_layer_from_config',
@@ -39,7 +41,7 @@ def set_layer_from_config(layer_config):
 	return layer.build_from_config(layer_config)
 
 
-class My2DLayer(MyModule):
+class My2DLayer(MyModule, MetaModule):
 
 	def __init__(self, in_channels, out_channels,
 	             use_bn=True, act_func='relu', dropout_rate=0, ops_order='weight_bn_act'):
@@ -103,10 +105,11 @@ class My2DLayer(MyModule):
 
 	""" Methods defined in MyModule """
 
-	def forward(self, x):
+	def forward(self, x, params):
 		# similar to nn.Sequential
-		for module in self._modules.values():
-			x = module(x)
+		for n, module in self._modules.items():
+			import pdb; pdb.set_trace()
+			x = module(x, params=self.get_subdict(params, f'_modules.{n}'))
 		return x
 
 	@property
@@ -129,7 +132,7 @@ class My2DLayer(MyModule):
 		raise NotImplementedError
 
 
-class ConvLayer(My2DLayer):
+class ConvLayer(My2DLayer, MetaModule):
 
 	def __init__(self, in_channels, out_channels,
 	             kernel_size=3, stride=1, dilation=1, groups=1, bias=False, has_shuffle=False, use_se=False,
@@ -156,7 +159,7 @@ class ConvLayer(My2DLayer):
 			padding[1] *= self.dilation
 
 		weight_dict = OrderedDict({
-			'conv': nn.Conv2d(
+			'conv': MetaConv2d(
 				self.in_channels, self.out_channels, kernel_size=self.kernel_size, stride=self.stride, padding=padding,
 				dilation=self.dilation, groups=min_divisible_value(self.in_channels, self.groups), bias=self.bias
 			)
@@ -189,7 +192,7 @@ class ConvLayer(My2DLayer):
 		if self.use_bn:
 			if isinstance(self.bn, nn.GroupNorm):
 				conv_str += '_GN%d' % self.bn.num_groups
-			elif isinstance(self.bn, nn.BatchNorm2d):
+			elif isinstance(self.bn, MetaBatchNorm2d):
 				conv_str += '_BN'
 		return conv_str
 
@@ -237,7 +240,7 @@ class IdentityLayer(My2DLayer):
 		return IdentityLayer(**config)
 
 
-class LinearLayer(MyModule):
+class LinearLayer(MyModule, MetaModule):
 
 	def __init__(self, in_features, out_features, bias=True,
 	             use_bn=False, act_func=None, dropout_rate=0, ops_order='weight_bn_act'):
@@ -257,9 +260,9 @@ class LinearLayer(MyModule):
 		# batch norm
 		if self.use_bn:
 			if self.bn_before_weight:
-				modules['bn'] = nn.BatchNorm1d(in_features)
+				modules['bn'] = MetaBatchNorm1d(in_features)
 			else:
-				modules['bn'] = nn.BatchNorm1d(out_features)
+				modules['bn'] = MetaBatchNorm1d(out_features)
 		else:
 			modules['bn'] = None
 		# activation
@@ -405,7 +408,7 @@ class ZeroLayer(MyModule):
 		return ZeroLayer()
 
 
-class MBConvLayer(MyModule):
+class MBConvLayer(MyModule, MetaModule):
 
 	def __init__(self, in_channels, out_channels,
 	             kernel_size=3, stride=1, expand_ratio=6, mid_channels=None, act_func='relu6', use_se=False,
@@ -431,33 +434,33 @@ class MBConvLayer(MyModule):
 		if self.expand_ratio == 1:
 			self.inverted_bottleneck = None
 		else:
-			self.inverted_bottleneck = nn.Sequential(OrderedDict([
-				('conv', nn.Conv2d(self.in_channels, feature_dim, 1, 1, 0, bias=False)),
-				('bn', nn.BatchNorm2d(feature_dim)),
+			self.inverted_bottleneck = MetaSequential(OrderedDict([
+				('conv', MetaConv2d(self.in_channels, feature_dim, 1, 1, 0, bias=False)),
+				('bn', MetaBatchNorm2d(feature_dim)),
 				('act', build_activation(self.act_func, inplace=True)),
 			]))
 
 		pad = get_same_padding(self.kernel_size)
 		groups = feature_dim if self.groups is None else min_divisible_value(feature_dim, self.groups)
 		depth_conv_modules = [
-			('conv', nn.Conv2d(feature_dim, feature_dim, kernel_size, stride, pad, groups=groups, bias=False)),
-			('bn', nn.BatchNorm2d(feature_dim)),
+			('conv', MetaConv2d(feature_dim, feature_dim, kernel_size, stride, pad, groups=groups, bias=False)),
+			('bn', MetaBatchNorm2d(feature_dim)),
 			('act', build_activation(self.act_func, inplace=True))
 		]
 		if self.use_se:
 			depth_conv_modules.append(('se', SEModule(feature_dim)))
-		self.depth_conv = nn.Sequential(OrderedDict(depth_conv_modules))
+		self.depth_conv = MetaSequential(OrderedDict(depth_conv_modules))
 
-		self.point_linear = nn.Sequential(OrderedDict([
-			('conv', nn.Conv2d(feature_dim, out_channels, 1, 1, 0, bias=False)),
-			('bn', nn.BatchNorm2d(out_channels)),
+		self.point_linear = MetaSequential(OrderedDict([
+			('conv', MetaConv2d(feature_dim, out_channels, 1, 1, 0, bias=False)),
+			('bn', MetaBatchNorm2d(out_channels)),
 		]))
 
-	def forward(self, x):
+	def forward(self, x, params=None):
 		if self.inverted_bottleneck:
-			x = self.inverted_bottleneck(x)
-		x = self.depth_conv(x)
-		x = self.point_linear(x)
+			x = self.inverted_bottleneck(x, params=self.get_subdict(params, 'inverted_bottleneck'))
+		x = self.depth_conv(x, params=self.get_subdict(params, 'depth_conv'))
+		x = self.point_linear(x, params=self.get_subdict(params, 'point_linear'))
 		return x
 
 	@property
@@ -499,7 +502,7 @@ class MBConvLayer(MyModule):
 		return MBConvLayer(**config)
 
 
-class ResidualBlock(MyModule):
+class ResidualBlock(MyModule, MetaModule):
 
 	def __init__(self, conv, shortcut):
 		super(ResidualBlock, self).__init__()
@@ -507,13 +510,13 @@ class ResidualBlock(MyModule):
 		self.conv = conv
 		self.shortcut = shortcut
 
-	def forward(self, x):
+	def forward(self, x, params=None):
 		if self.conv is None or isinstance(self.conv, ZeroLayer):
 			res = x
 		elif self.shortcut is None or isinstance(self.shortcut, ZeroLayer):
-			res = self.conv(x)
+			res = self.conv(x, params=self.get_subdict(params, 'conv'))
 		else:
-			res = self.conv(x) + self.shortcut(x)
+			res = self.conv(x, params=self.get_subdict(params, 'conv')) + self.shortcut(x, params=self.get_subdict(params, 'shortcut'))
 		return res
 
 	@property

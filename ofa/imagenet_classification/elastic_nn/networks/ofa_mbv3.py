@@ -103,22 +103,22 @@ class OFAMobileNetV3(MobileNetV3):
 	def name():
 		return 'OFAMobileNetV3'
 
-	def forward(self, x):
+	def forward(self, x, params=None):
 		# first conv
-		x = self.first_conv(x)
+		x = self.first_conv(x, params=self.get_subdict(params, 'first_conv'))
 		# first block
-		x = self.blocks[0](x)
+		x = self.blocks[0](x, params=self.get_subdict(params, 'blocks.0'))
 		# blocks
 		for stage_id, block_idx in enumerate(self.block_group_info):
 			depth = self.runtime_depth[stage_id]
 			active_idx = block_idx[:depth]
 			for idx in active_idx:
-				x = self.blocks[idx](x)
-		x = self.final_expand_layer(x)
+				x = self.blocks[idx](x, params=self.get_subdict(params, f'blocks.{idx}'))
+		x = self.final_expand_layer(x, params=self.get_subdict(params, 'final_expand_layer'))
 		x = x.mean(3, keepdim=True).mean(2, keepdim=True)  # global average pooling
-		x = self.feature_mix_layer(x)
+		x = self.feature_mix_layer(x, params=self.get_subdict(params, 'feature_mix_layer'))
 		x = x.view(x.size(0), -1)
-		x = self.classifier(x)
+		x = self.classifier(x, params=self.get_subdict(params, 'classifier'))
 		return x
 
 	@property

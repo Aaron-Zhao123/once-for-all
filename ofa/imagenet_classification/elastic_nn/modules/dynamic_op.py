@@ -6,7 +6,8 @@ import torch.nn.functional as F
 import torch.nn as nn
 import torch
 from torch.nn.parameter import Parameter
-
+from torchmeta.modules.module import MetaModule
+from torchmeta.modules import MetaConv2d, MetaSequential, MetaBatchNorm2d
 from ofa.utils import get_same_padding, sub_filter_start_end, make_divisible, SEModule, MyNetwork, MyConv2d
 
 __all__ = ['DynamicSeparableConv2d', 'DynamicConv2d', 'DynamicGroupConv2d',
@@ -88,7 +89,7 @@ class DynamicSeparableConv2d(nn.Module):
 		return y
 
 
-class DynamicConv2d(nn.Module):
+class DynamicConv2d(MetaModule):
 
 	def __init__(self, max_in_channels, max_out_channels, kernel_size=1, stride=1, dilation=1):
 		super(DynamicConv2d, self).__init__()
@@ -99,20 +100,24 @@ class DynamicConv2d(nn.Module):
 		self.stride = stride
 		self.dilation = dilation
 
-		self.conv = nn.Conv2d(
+		self.conv = MetaConv2d(
 			self.max_in_channels, self.max_out_channels, self.kernel_size, stride=self.stride, bias=False,
 		)
 
 		self.active_out_channel = self.max_out_channels
 
-	def get_active_filter(self, out_channel, in_channel):
-		return self.conv.weight[:out_channel, :in_channel, :, :]
+	def get_active_filter(self, out_channel, in_channel, params=None):
+		if params is None:
+			return self.conv.weight[:out_channel, :in_channel, :, :]
+		else:
+			return params[:out_channel, :in_channel, :, :]
 
-	def forward(self, x, out_channel=None):
+	def forward(self, x, out_channel=None, params=None):
 		if out_channel is None:
 			out_channel = self.active_out_channel
 		in_channel = x.size(1)
-		filters = self.get_active_filter(out_channel, in_channel).contiguous()
+
+		filters = self.get_active_filter(out_channel, in_channel, params).contiguous()
 
 		padding = get_same_padding(self.kernel_size)
 		filters = self.conv.weight_standardization(filters) if isinstance(self.conv, MyConv2d) else filters
@@ -171,7 +176,7 @@ class DynamicGroupConv2d(nn.Module):
 		return y
 
 
-class DynamicBatchNorm2d(nn.Module):
+class DynamicBatchNorm2d(MetaModule):
 	SET_RUNNING_STATISTICS = False
 
 	def __init__(self, max_feature_dim):
@@ -181,7 +186,7 @@ class DynamicBatchNorm2d(nn.Module):
 		self.bn = nn.BatchNorm2d(self.max_feature_dim)
 
 	@staticmethod
-	def bn_forward(x, bn: nn.BatchNorm2d, feature_dim):
+	def bn_forward(x, bn: nn.BatchNorm2d, feature_dim, params=None):
 		if bn.num_features == feature_dim or DynamicBatchNorm2d.SET_RUNNING_STATISTICS:
 			return bn(x)
 		else:
@@ -194,15 +199,19 @@ class DynamicBatchNorm2d(nn.Module):
 						exponential_average_factor = 1.0 / float(bn.num_batches_tracked)
 					else:  # use exponential moving average
 						exponential_average_factor = bn.momentum
+			if params is None:
+				weight, bias = bn.weight, bn.bias
+			else:
+				weight, bias = params.get('weight', None), params.get('bias', None)
 			return F.batch_norm(
-				x, bn.running_mean[:feature_dim], bn.running_var[:feature_dim], bn.weight[:feature_dim],
-				bn.bias[:feature_dim], bn.training or not bn.track_running_stats,
+				x, bn.running_mean[:feature_dim], bn.running_var[:feature_dim], weight[:feature_dim],
+				bias[:feature_dim], bn.training or not bn.track_running_stats,
 				exponential_average_factor, bn.eps,
 			)
 
-	def forward(self, x):
+	def forward(self, x, params=None):
 		feature_dim = x.size(1)
-		y = self.bn_forward(x, self.bn, feature_dim)
+		y = self.bn_forward(x, self.bn, feature_dim, params=None)
 		return y
 
 
