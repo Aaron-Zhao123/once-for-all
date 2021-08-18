@@ -110,6 +110,8 @@ class DynamicConv2d(MetaModule):
 		if params is None:
 			return self.conv.weight[:out_channel, :in_channel, :, :]
 		else:
+			params = self.get_subdict(params, 'conv')
+			params = params['weight']
 			return params[:out_channel, :in_channel, :, :]
 
 	def forward(self, x, out_channel=None, params=None):
