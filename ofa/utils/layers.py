@@ -59,9 +59,9 @@ class My2DLayer(MyModule, MetaModule):
 		# batch norm
 		if self.use_bn:
 			if self.bn_before_weight:
-				modules['bn'] = nn.BatchNorm2d(in_channels)
+				modules['bn'] = MetaBatchNorm2d(in_channels)
 			else:
-				modules['bn'] = nn.BatchNorm2d(out_channels)
+				modules['bn'] = MetaBatchNorm2d(out_channels)
 		else:
 			modules['bn'] = None
 		# activation
