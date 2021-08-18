@@ -108,8 +108,10 @@ class My2DLayer(MyModule, MetaModule):
 	def forward(self, x, params):
 		# similar to nn.Sequential
 		for n, module in self._modules.items():
-			import pdb; pdb.set_trace()
-			x = module(x, params=self.get_subdict(params, f'_modules.{n}'))
+			if isinstance(module, (MetaBatchNorm2d, MetaConv2d, MetaModule)):
+				x = module(x, params=self.get_subdict(params, f'_modules.{n}'))
+			else:
+				x = module(x)
 		return x
 
 	@property
