@@ -302,8 +302,11 @@ class LinearLayer(MyModule, MetaModule):
 				return False
 		raise ValueError('Invalid ops_order: %s' % self.ops_order)
 
-	def forward(self, x):
-		for module in self._modules.values():
+	def forward(self, x, params=None):
+		for idx, module in enumerate(self._modules.values()):
+                    if isinstance(module, MetaModule):
+			x = module(x, params=self.get_subdict(params, f"_modules.{idx}"))
+                    else:
 			x = module(x)
 		return x
 
@@ -516,9 +519,13 @@ class ResidualBlock(MyModule, MetaModule):
 		if self.conv is None or isinstance(self.conv, ZeroLayer):
 			res = x
 		elif self.shortcut is None or isinstance(self.shortcut, ZeroLayer):
-			res = self.conv(x, params=self.get_subdict(params, 'conv'))
+			res = self.conv(x)
 		else:
-			res = self.conv(x, params=self.get_subdict(params, 'conv')) + self.shortcut(x, params=self.get_subdict(params, 'shortcut'))
+                    if isinstance(self.shortcut, MetaModule):
+                        shortcut_res = self.shortcut(x, params=self.get_subdict(params, 'shortcut'))
+                    else:
+                        shortcut_res = self.shortcut(x)
+                    res = self.conv(x, params=self.get_subdict(params, 'conv')) + shortcut_res
 		return res
 
 	@property

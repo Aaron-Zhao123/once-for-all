@@ -151,7 +151,7 @@ class DynamicMBConvLayer(MyModule, MetaModule):
         self.active_expand_ratio = max(self.expand_ratio_list)
         self.active_out_channel = max(self.out_channel_list)
 
-    def forward(self, x):
+    def forward(self, x, params=None):
         in_channel = x.size(1)
 
         if self.inverted_bottleneck is not None:
@@ -162,9 +162,9 @@ class DynamicMBConvLayer(MyModule, MetaModule):
         self.point_linear.conv.active_out_channel = self.active_out_channel
 
         if self.inverted_bottleneck is not None:
-            x = self.inverted_bottleneck(x)
-        x = self.depth_conv(x)
-        x = self.point_linear(x)
+            x = self.inverted_bottleneck(x, params=self.get_subdict(params, 'inverted_bottleneck'))
+        x = self.depth_conv(x, params=self.get_subdict(params, 'depth_conv'))
+        x = self.point_linear(x, params=self.get_subdict(params, 'point_linear'))
         return x
 
     @property
