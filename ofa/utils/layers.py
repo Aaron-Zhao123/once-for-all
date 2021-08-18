@@ -304,10 +304,10 @@ class LinearLayer(MyModule, MetaModule):
 
 	def forward(self, x, params=None):
 		for idx, module in enumerate(self._modules.values()):
-                    if isinstance(module, MetaModule):
-			x = module(x, params=self.get_subdict(params, f"_modules.{idx}"))
-                    else:
-			x = module(x)
+			if isinstance(module, MetaModule):
+				x = module(x, params=self.get_subdict(params, f"_modules.{idx}"))
+			else:
+				x = module(x)
 		return x
 
 	@property
