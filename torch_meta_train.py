@@ -91,7 +91,55 @@ def train(args):
             pbar.set_postfix(accuracy='{0:.4f}'.format(accuracy.item()))
             if batch_idx >= args.num_batches:
                 break
+    model.eval()
 
+    dataset = miniimagenet(args.folder,
+                       shots=args.num_shots,
+                       ways=args.num_ways,
+                       shuffle=False,
+                       test_shots=15,
+                       meta_train=False,
+                       download=args.download)
+    val_dataloader = BatchMetaDataLoader(dataset,
+                                     batch_size=args.batch_size,
+                                     shuffle=True,
+                                     num_workers=args.num_workers)
+
+    # eval loop
+    with tqdm(val_dataloader, total=100) as pbar:
+        for batch_idx, batch in enumerate(pbar):
+            model.zero_grad()
+
+            train_inputs, train_targets = batch['train']
+            train_inputs = train_inputs.to(device=args.device)
+            train_targets = train_targets.to(device=args.device)
+
+            test_inputs, test_targets = batch['test']
+            test_inputs = test_inputs.to(device=args.device)
+            test_targets = test_targets.to(device=args.device)
+
+            outer_loss = torch.tensor(0., device=args.device)
+            accuracy = torch.tensor(0., device=args.device)
+            for task_idx, (train_input, train_target, test_input,
+                    test_target) in enumerate(zip(train_inputs, train_targets,
+                    test_inputs, test_targets)):
+                train_logit = model(train_input)
+                inner_loss = F.cross_entropy(train_logit, train_target)
+
+                model.zero_grad()
+                params = gradient_update_parameters(model,
+                                                    inner_loss,
+                                                    step_size=args.step_size,
+                                                    first_order=args.first_order)
+
+                test_logit = model(test_input, params=params)
+
+                with torch.no_grad():
+                    accuracy += get_accuracy(test_logit, test_target)
+            accuracy.div_(args.batch_size)
+            pbar.set_postfix(accuracy='{0:.4f}'.format(accuracy.item()))
+            if batch_idx >= args.num_batches:
+                break
     # Save model
     if args.output_folder is not None:
         filename = os.path.join(args.output_folder, 'maml_omniglot_'
