@@ -98,7 +98,7 @@ def train(args):
                        ways=args.num_ways,
                        shuffle=False,
                        test_shots=15,
-                       meta_train=False,
+                       meta_test=True,
                        download=args.download)
     val_dataloader = BatchMetaDataLoader(dataset,
                                      batch_size=args.batch_size,
@@ -106,7 +106,7 @@ def train(args):
                                      num_workers=args.num_workers)
 
     # eval loop
-    with tqdm(val_dataloader, total=100) as pbar:
+    with tqdm(val_dataloader, total=500) as pbar:
         for batch_idx, batch in enumerate(pbar):
             model.zero_grad()
 
@@ -138,9 +138,10 @@ def train(args):
                     accuracy += get_accuracy(test_logit, test_target)
             accuracy.div_(args.batch_size)
             pbar.set_postfix(accuracy='{0:.4f}'.format(accuracy.item()))
-            if batch_idx >= args.num_batches:
+            if batch_idx >= 500:
                 break
     # Save model
+    print(accuracy)
     if args.output_folder is not None:
         filename = os.path.join(args.output_folder, 'maml_omniglot_'
             '{0}shot_{1}way.th'.format(args.num_shots, args.num_ways))
